@@ -1686,7 +1686,8 @@ void CameraAravisNodelet::rosConnectCallback()
                    )
     )
     {
-      aravis::device::execute_command(p_device_, "AcquisitionStop"); // don't waste CPU if nobody is listening!
+      if (config_.AcquisitionMode == "Continuous")
+        aravis::device::execute_command(p_device_, "AcquisitionStop"); // don't waste CPU if nobody is listening!
     }
     else
     {
