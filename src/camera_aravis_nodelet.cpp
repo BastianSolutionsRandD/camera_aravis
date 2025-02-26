@@ -555,8 +555,15 @@ void CameraAravisNodelet::connectToCamera()
   }
 
   // Open the camera, and set it up.
+  const size_t max_attempts = 2;
+  size_t attempt_count = 0;
   while (!p_camera_)
   {
+    if (attempt_count > max_attempts)
+    {
+      ROS_ASSERT_MSG(p_camera_ != nullptr, "Unable to connect to camera. Exiting..");
+      return ;
+    }
     if (guid_.empty())
     {
       ROS_INFO("Opening: (any)");
@@ -567,6 +574,7 @@ void CameraAravisNodelet::connectToCamera()
       ROS_INFO_STREAM("Opening: " << guid_);
       p_camera_ = aravis::camera_new(guid_.c_str());
     }
+    attempt_count++;
     ros::Duration(1.0).sleep();
   }
 
