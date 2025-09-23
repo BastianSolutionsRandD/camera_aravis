@@ -267,7 +267,7 @@ namespace aravis {
 
     ArvStream* create_stream(ArvCamera* cam, ArvStreamCallback callback, void* user_data) {
       GuardedGError err;
-      ArvStream* res = arv_camera_create_stream(cam, callback, user_data, err.storeError());
+      ArvStream* res = arv_camera_create_stream(cam, callback, user_data, NULL, err.storeError());
       LOG_GERROR_ARAVIS(err);
       return res;
     }
@@ -415,6 +415,15 @@ void CameraAravisNodelet::onInit()
   guid_ = pnh.param<std::string>("guid", guid_); // Get the camera guid as a parameter or use the first device.
   use_ptp_stamp_ = pnh.param<bool>("use_ptp_timestamp", use_ptp_stamp_);
   pub_ext_camera_info_ = pnh.param<bool>("ExtendedCameraInfo", pub_ext_camera_info_); // publish an extended camera info message
+  auto port_range = pnh.param<std::string>("port_range", "");
+
+  if (!port_range.empty()) {
+    bool port_range_set_success = arv_set_gv_port_range_from_string(port_range.c_str());
+    if (!port_range_set_success) {
+      NODELET_ERROR("camera_aravis failed to set port range to %s", port_range.c_str());
+      return;
+    }
+  }
 
   std::string stream_channel_args;
   std::vector<std::vector<std::string>> substream_names;
@@ -550,8 +559,7 @@ void CameraAravisNodelet::connectToCamera()
 
   if (n_devices == 0)
   {
-    ROS_ERROR("No cameras detected.");
-    return;
+    ROS_WARN("Automatic camera discovery failed.");
   }
 
   // Open the camera, and set it up.
@@ -1727,7 +1735,7 @@ void CameraAravisNodelet::newBufferReady(ArvStream *p_stream, size_t stream_id)
 
   // check if we risk to drop the next image because of not enough buffers left
   gint n_available_buffers;
-  arv_stream_get_n_buffers(p_stream, &n_available_buffers, NULL);
+  arv_stream_get_n_owned_buffers(p_stream, &n_available_buffers, NULL, NULL);
 
   Stream & stream = streams_[stream_id];
 
