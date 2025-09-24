@@ -1068,23 +1068,7 @@ void CameraAravisNodelet::spawnStream()
   for(int i = 0; i < streams_.size(); i++) {
     arv_stream_set_emit_signals(streams_[i].p_stream, TRUE);
   }
-
-  // any substream of any stream enabled?
-  if (std::any_of(streams_.begin(), streams_.end(),
-                  [](const Stream &src)
-                  {
-                    return std::any_of(src.substreams.begin(), src.substreams.end(),
-                                       [](const Substream &sub)
-                                       {
-                                         return sub.cam_pub.getNumSubscribers() > 0;
-                                       }
-                                      );
-                  }
-                 )
-  ){
-    aravis::camera::start_acquisition(p_camera_);
-  }
-
+  aravis::camera::start_acquisition(p_camera_);
   this->get_integer_service_ = pnh.advertiseService("get_integer_feature_value", &CameraAravisNodelet::getIntegerFeatureCallback, this);
   this->get_float_service_ = pnh.advertiseService("get_float_feature_value", &CameraAravisNodelet::getFloatFeatureCallback, this);
   this->get_string_service_ = pnh.advertiseService("get_string_feature_value", &CameraAravisNodelet::getStringFeatureCallback, this);
@@ -1094,7 +1078,7 @@ void CameraAravisNodelet::spawnStream()
   this->set_float_service_ = pnh.advertiseService("set_float_feature_value", &CameraAravisNodelet::setFloatFeatureCallback, this);
   this->set_string_service_ = pnh.advertiseService("set_string_feature_value", &CameraAravisNodelet::setStringFeatureCallback, this);
   this->set_boolean_service_ = pnh.advertiseService("set_boolean_feature_value", &CameraAravisNodelet::setBooleanFeatureCallback, this);
-
+  aravis::device::execute_command(p_device_, "AcquisitionStop");
   ROS_INFO("Done initializing camera_aravis.");
 }
 
@@ -1443,7 +1427,7 @@ void CameraAravisNodelet::setExtendedCameraInfo(std::string channel_name, size_t
 // Extra stream options for GigEVision streams.
 void CameraAravisNodelet::tuneGvStream(ArvGvStream *p_stream)
 {
-  gboolean b_auto_buffer = FALSE;
+  gboolean b_auto_buffer = TRUE;
   gboolean b_packet_resend = TRUE;
   unsigned int timeout_packet = 40; // milliseconds
   unsigned int timeout_frame_retention = 200;
