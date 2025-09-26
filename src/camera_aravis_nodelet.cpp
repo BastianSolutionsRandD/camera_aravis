@@ -795,6 +795,15 @@ void CameraAravisNodelet::setCameraSettings()
       aravis::camera::set_gain(p_camera_, config_.Gain);
     }
 
+    if (implemented_features_["BalanceRatio"] && implemented_features_["BalanceRatioSelector"]) {
+      aravis::device::feature::set_string(p_device_, "BalanceRatioSelector", "Red");
+      aravis::device::feature::set_float(p_device_, "BalanceRatio", config_.BalanceRatioRed);
+      aravis::device::feature::set_string(p_device_, "BalanceRatioSelector", "Blue");
+      aravis::device::feature::set_float(p_device_, "BalanceRatio", config_.BalanceRatioBlue);
+      aravis::device::feature::set_string(p_device_, "BalanceRatioSelector", "Green");
+      aravis::device::feature::set_float(p_device_, "BalanceRatio", config_.BalanceRatioGreen);
+    }
+
     if (implemented_features_["AcquisitionFrameRateEnable"]) {
       aravis::device::feature::set_boolean(p_device_, "AcquisitionFrameRateEnable", true);
     }
@@ -1488,6 +1497,11 @@ void CameraAravisNodelet::rosReconfigureCallback(Config &config, uint32_t level)
     config.Gain = config_.Gain;
     ROS_WARN("GainAuto is active. Cannot manually set Gain.");
   }
+  if (config.BalanceWhiteAuto.compare("Off") != 0)
+  {
+    config.ExposureTime = config_.ExposureTime;
+    ROS_WARN("BalanceWhiteAuto is active. Cannot manually set BalanceRatio.");
+  }
 
   // reset FrameRate when triggered
   if (config.TriggerMode.compare("Off") != 0)
@@ -1508,6 +1522,10 @@ void CameraAravisNodelet::rosReconfigureCallback(Config &config, uint32_t level)
   const bool changed_trigger_mode = (config_.TriggerMode != config.TriggerMode);
   const bool changed_trigger_source = (config_.TriggerSource != config.TriggerSource) || changed_trigger_mode;
   const bool changed_focus_pos = (config_.FocusPos != config.FocusPos);
+  const bool changed_balance_ratio_auto = (config_.BalanceWhiteAuto != config.BalanceWhiteAuto);
+  const bool changed_balance_ratio = (config_.BalanceRatioRed != config.BalanceRatioRed) ||
+                                     (config_.BalanceRatioBlue != config.BalanceRatioBlue) ||
+                                     (config_.BalanceRatioGreen != config.BalanceRatioGreen);
 
   if (changed_auto_master)
   {
@@ -1540,6 +1558,29 @@ void CameraAravisNodelet::rosReconfigureCallback(Config &config, uint32_t level)
     }
     else
       ROS_INFO("Camera does not support Gain or GainRaw.");
+  }
+
+  if (changed_balance_ratio && config.BalanceWhiteAuto.compare("Off") == 0)
+  {
+    if (implemented_features_["BalanceRatioSelector"] && implemented_features_["BalanceRatio"])
+    {
+      ROS_INFO("Set BalanceRatioSelector = Red");
+      aravis::device::feature::set_string(p_device_, "BalanceRatioSelector", "Red");
+      ROS_INFO("Set BalanceRatio = %f", config.BalanceRatioRed);
+      aravis::device::feature::set_float(p_device_, "BalanceRatio", config.BalanceRatioRed);
+
+      ROS_INFO("Set BalanceRatioSelector = Blue");
+      aravis::device::feature::set_string(p_device_, "BalanceRatioSelector", "Blue");
+      ROS_INFO("Set BalanceRatio = %f", config.BalanceRatioBlue);
+      aravis::device::feature::set_float(p_device_, "BalanceRatio", config.BalanceRatioBlue);
+
+      ROS_INFO("Set BalanceRatioSelector = Green");
+      aravis::device::feature::set_string(p_device_, "BalanceRatioSelector", "Green");
+      ROS_INFO("Set BalanceRatio = %f", config.BalanceRatioGreen);
+      aravis::device::feature::set_float(p_device_, "BalanceRatio", config.BalanceRatioGreen);
+    }
+    else
+      ROS_INFO("Camera does not support BalanceRatioSelector or BalanceRatio.");
   }
 
   if (changed_exposure_auto)
@@ -1575,6 +1616,27 @@ void CameraAravisNodelet::rosReconfigureCallback(Config &config, uint32_t level)
     }
     else
       ROS_INFO("Camera does not support GainAuto.");
+  }
+  if (changed_balance_ratio_auto)
+  {
+    if (implemented_features_["BalanceWhiteAuto"] && implemented_features_["BalanceWhiteAuto"])
+    {
+      ROS_INFO("Set BalanceWhiteAuto = %s", config.BalanceWhiteAuto.c_str());
+      aravis::device::feature::set_string(p_device_, "BalanceWhiteAuto", config.BalanceWhiteAuto.c_str());
+      if (config.BalanceWhiteAuto.compare("Once") == 0)
+      {
+        ros::Duration(2.0).sleep();
+        config.BalanceWhiteAuto = "Off";
+        aravis::device::feature::set_string(p_device_, "BalanceRatioSelector", "Red");
+        config.BalanceRatioRed = aravis::device::feature::get_float(p_device_, "BalanceRatio");
+        aravis::device::feature::set_string(p_device_, "BalanceRatioSelector", "Blue");
+        config.BalanceRatioBlue = aravis::device::feature::get_float(p_device_, "BalanceRatio");
+        aravis::device::feature::set_string(p_device_, "BalanceRatioSelector", "Green");
+        config.BalanceRatioGreen = aravis::device::feature::get_float(p_device_, "BalanceRatio");
+      }
+    }
+    else
+      ROS_INFO("Camera does not support BalanceWhiteAuto.");
   }
 
   if (changed_acquisition_frame_rate)
