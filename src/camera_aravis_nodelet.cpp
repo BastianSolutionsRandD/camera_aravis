@@ -1499,7 +1499,9 @@ void CameraAravisNodelet::rosReconfigureCallback(Config &config, uint32_t level)
   }
   if (config.BalanceWhiteAuto.compare("Off") != 0)
   {
-    config.ExposureTime = config_.ExposureTime;
+    config.BalanceRatioRed = config_.BalanceRatioRed;
+    config.BalanceRatioBlue = config_.BalanceRatioBlue;
+    config.BalanceRatioGreen = config_.BalanceRatioGreen;
     ROS_WARN("BalanceWhiteAuto is active. Cannot manually set BalanceRatio.");
   }
 
@@ -1619,11 +1621,12 @@ void CameraAravisNodelet::rosReconfigureCallback(Config &config, uint32_t level)
   }
   if (changed_balance_ratio_auto)
   {
-    if (implemented_features_["BalanceWhiteAuto"] && implemented_features_["BalanceWhiteAuto"])
+    if (implemented_features_["BalanceWhiteAuto"])
     {
       ROS_INFO("Set BalanceWhiteAuto = %s", config.BalanceWhiteAuto.c_str());
       aravis::device::feature::set_string(p_device_, "BalanceWhiteAuto", config.BalanceWhiteAuto.c_str());
-      if (config.BalanceWhiteAuto.compare("Once") == 0)
+      if (config.BalanceWhiteAuto.compare("Once") == 0 && implemented_features_["BalanceRatioSelector"] &&
+          implemented_features_["BalanceRatio"])
       {
         ros::Duration(2.0).sleep();
         config.BalanceWhiteAuto = "Off";
