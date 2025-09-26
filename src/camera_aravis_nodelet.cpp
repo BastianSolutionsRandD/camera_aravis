@@ -1625,8 +1625,7 @@ void CameraAravisNodelet::rosReconfigureCallback(Config &config, uint32_t level)
     {
       ROS_INFO("Set BalanceWhiteAuto = %s", config.BalanceWhiteAuto.c_str());
       aravis::device::feature::set_string(p_device_, "BalanceWhiteAuto", config.BalanceWhiteAuto.c_str());
-      if (config.BalanceWhiteAuto.compare("Once") == 0 && implemented_features_["BalanceRatioSelector"] &&
-          implemented_features_["BalanceRatio"])
+      if (implemented_features_["BalanceRatioSelector"] && implemented_features_["BalanceRatio"])
       {
         ros::Duration(2.0).sleep();
         config.BalanceWhiteAuto = "Off";
