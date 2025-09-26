@@ -498,7 +498,6 @@ void CameraAravisNodelet::onInit()
   // update the reconfigure config
   reconfigure_server_->setConfigMin(config_min_);
   reconfigure_server_->setConfigMax(config_max_);
-  reconfigure_server_->updateConfig(config_);
   ros::Duration(2.0).sleep();
 
   reconfigure_server_->setCallback(boost::bind(&CameraAravisNodelet::rosReconfigureCallback, this, _1, _2));
