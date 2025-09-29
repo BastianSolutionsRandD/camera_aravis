@@ -2,15 +2,17 @@
 find_package(PkgConfig QUIET)
 
 if( PKG_CONFIG_FOUND )
-  pkg_check_modules( Aravis aravis-0.8 )
+  pkg_check_modules( Aravis aravis-0.10 )
 endif()
 
 if( NOT Aravis_FOUND )
-  message("Aravis (aravis-0.8) could not be found by pkg-config. Trying to manually find Aravis.")
+  message("Aravis (aravis-0.10) could not be found by pkg-config. Trying to manually find Aravis.")
 
   find_path(Aravis_INCLUDE_DIRS arv.h
     PATHS
     "$ENV{ARAVIS_INCLUDE_PATH}"
+    /usr/local/include/aravis-0.10
+    /usr/include/aravis-0.10
     /usr/local/include/aravis-0.8
     /usr/include/aravis-0.8
     /usr/local/include/aravis-0.7
@@ -20,7 +22,7 @@ if( NOT Aravis_FOUND )
   )
 
 
-  find_library(Aravis_LIBRARIES NAMES aravis-0.8 aravis-0.7 aravis-0.6
+  find_library(Aravis_LIBRARIES NAMES aravis-0.10 aravis-0.8 aravis-0.7 aravis-0.6
     PATHS
     "$ENV{ARAVIS_LIBRARY}"
     /usr/local/lib

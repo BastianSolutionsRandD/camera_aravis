@@ -41,7 +41,7 @@ find_package(catkin REQUIRED COMPONENTS
 
 # Version >= 0.8.17 -> ARV_UV_USB_MODE_ASYNC
 # Version >= 0.8.25 -> multipart support and fixes
-find_package(Aravis 0.8 REQUIRED)
+find_package(Aravis 0.10 REQUIRED)
 find_package(GLIB2 REQUIRED)
 
 find_package(OpenCV REQUIRED)

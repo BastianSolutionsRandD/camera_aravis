@@ -267,7 +267,7 @@ namespace aravis {
 
     ArvStream* create_stream(ArvCamera* cam, ArvStreamCallback callback, void* user_data) {
       GuardedGError err;
-      ArvStream* res = arv_camera_create_stream(cam, callback, user_data, err.storeError());
+      ArvStream* res = arv_camera_create_stream(cam, callback, user_data, NULL, err.storeError());
       LOG_GERROR_ARAVIS(err);
       return res;
     }
@@ -415,6 +415,15 @@ void CameraAravisNodelet::onInit()
   guid_ = pnh.param<std::string>("guid", guid_); // Get the camera guid as a parameter or use the first device.
   use_ptp_stamp_ = pnh.param<bool>("use_ptp_timestamp", use_ptp_stamp_);
   pub_ext_camera_info_ = pnh.param<bool>("ExtendedCameraInfo", pub_ext_camera_info_); // publish an extended camera info message
+  auto port_range = pnh.param<std::string>("port_range", "");
+
+  if (!port_range.empty()) {
+    bool port_range_set_success = arv_set_gv_port_range_from_string(port_range.c_str());
+    if (!port_range_set_success) {
+      NODELET_ERROR("camera_aravis failed to set port range to %s", port_range.c_str());
+      return;
+    }
+  }
 
   std::string stream_channel_args;
   std::vector<std::vector<std::string>> substream_names;
@@ -489,7 +498,6 @@ void CameraAravisNodelet::onInit()
   // update the reconfigure config
   reconfigure_server_->setConfigMin(config_min_);
   reconfigure_server_->setConfigMax(config_max_);
-  reconfigure_server_->updateConfig(config_);
   ros::Duration(2.0).sleep();
 
   reconfigure_server_->setCallback(boost::bind(&CameraAravisNodelet::rosReconfigureCallback, this, _1, _2));
@@ -553,8 +561,7 @@ void CameraAravisNodelet::connectToCamera()
 
   if (n_devices == 0)
   {
-    ROS_ERROR("No cameras detected.");
-    return;
+    ROS_WARN("Automatic camera discovery failed.");
   }
 
   // Open the camera, and set it up.
@@ -785,6 +792,15 @@ void CameraAravisNodelet::setCameraSettings()
 
     if (implemented_features_["Gain"]) {
       aravis::camera::set_gain(p_camera_, config_.Gain);
+    }
+
+    if (implemented_features_["BalanceRatio"] && implemented_features_["BalanceRatioSelector"]) {
+      aravis::device::feature::set_string(p_device_, "BalanceRatioSelector", "Red");
+      aravis::device::feature::set_float(p_device_, "BalanceRatio", config_.BalanceRatioRed);
+      aravis::device::feature::set_string(p_device_, "BalanceRatioSelector", "Blue");
+      aravis::device::feature::set_float(p_device_, "BalanceRatio", config_.BalanceRatioBlue);
+      aravis::device::feature::set_string(p_device_, "BalanceRatioSelector", "Green");
+      aravis::device::feature::set_float(p_device_, "BalanceRatio", config_.BalanceRatioGreen);
     }
 
     if (implemented_features_["AcquisitionFrameRateEnable"]) {
@@ -1063,23 +1079,7 @@ void CameraAravisNodelet::spawnStream()
   for(int i = 0; i < streams_.size(); i++) {
     arv_stream_set_emit_signals(streams_[i].p_stream, TRUE);
   }
-
-  // any substream of any stream enabled?
-  if (std::any_of(streams_.begin(), streams_.end(),
-                  [](const Stream &src)
-                  {
-                    return std::any_of(src.substreams.begin(), src.substreams.end(),
-                                       [](const Substream &sub)
-                                       {
-                                         return sub.cam_pub.getNumSubscribers() > 0;
-                                       }
-                                      );
-                  }
-                 )
-  ){
-    aravis::camera::start_acquisition(p_camera_);
-  }
-
+  aravis::camera::start_acquisition(p_camera_);
   this->get_integer_service_ = pnh.advertiseService("get_integer_feature_value", &CameraAravisNodelet::getIntegerFeatureCallback, this);
   this->get_float_service_ = pnh.advertiseService("get_float_feature_value", &CameraAravisNodelet::getFloatFeatureCallback, this);
   this->get_string_service_ = pnh.advertiseService("get_string_feature_value", &CameraAravisNodelet::getStringFeatureCallback, this);
@@ -1089,7 +1089,7 @@ void CameraAravisNodelet::spawnStream()
   this->set_float_service_ = pnh.advertiseService("set_float_feature_value", &CameraAravisNodelet::setFloatFeatureCallback, this);
   this->set_string_service_ = pnh.advertiseService("set_string_feature_value", &CameraAravisNodelet::setStringFeatureCallback, this);
   this->set_boolean_service_ = pnh.advertiseService("set_boolean_feature_value", &CameraAravisNodelet::setBooleanFeatureCallback, this);
-
+  aravis::device::execute_command(p_device_, "AcquisitionStop");
   ROS_INFO("Done initializing camera_aravis.");
 }
 
@@ -1438,7 +1438,7 @@ void CameraAravisNodelet::setExtendedCameraInfo(std::string channel_name, size_t
 // Extra stream options for GigEVision streams.
 void CameraAravisNodelet::tuneGvStream(ArvGvStream *p_stream)
 {
-  gboolean b_auto_buffer = FALSE;
+  gboolean b_auto_buffer = TRUE;
   gboolean b_packet_resend = TRUE;
   unsigned int timeout_packet = 40; // milliseconds
   unsigned int timeout_frame_retention = 200;
@@ -1496,6 +1496,13 @@ void CameraAravisNodelet::rosReconfigureCallback(Config &config, uint32_t level)
     config.Gain = config_.Gain;
     ROS_WARN("GainAuto is active. Cannot manually set Gain.");
   }
+  if (config.BalanceWhiteAuto.compare("Off") != 0)
+  {
+    config.BalanceRatioRed = config_.BalanceRatioRed;
+    config.BalanceRatioBlue = config_.BalanceRatioBlue;
+    config.BalanceRatioGreen = config_.BalanceRatioGreen;
+    ROS_WARN("BalanceWhiteAuto is active. Cannot manually set BalanceRatio.");
+  }
 
   // reset FrameRate when triggered
   if (config.TriggerMode.compare("Off") != 0)
@@ -1516,6 +1523,10 @@ void CameraAravisNodelet::rosReconfigureCallback(Config &config, uint32_t level)
   const bool changed_trigger_mode = (config_.TriggerMode != config.TriggerMode);
   const bool changed_trigger_source = (config_.TriggerSource != config.TriggerSource) || changed_trigger_mode;
   const bool changed_focus_pos = (config_.FocusPos != config.FocusPos);
+  const bool changed_balance_ratio_auto = (config_.BalanceWhiteAuto != config.BalanceWhiteAuto);
+  const bool changed_balance_ratio = (config_.BalanceRatioRed != config.BalanceRatioRed) ||
+                                     (config_.BalanceRatioBlue != config.BalanceRatioBlue) ||
+                                     (config_.BalanceRatioGreen != config.BalanceRatioGreen);
 
   if (changed_auto_master)
   {
@@ -1548,6 +1559,29 @@ void CameraAravisNodelet::rosReconfigureCallback(Config &config, uint32_t level)
     }
     else
       ROS_INFO("Camera does not support Gain or GainRaw.");
+  }
+
+  if (changed_balance_ratio && config.BalanceWhiteAuto.compare("Off") == 0)
+  {
+    if (implemented_features_["BalanceRatioSelector"] && implemented_features_["BalanceRatio"])
+    {
+      ROS_INFO("Set BalanceRatioSelector = Red");
+      aravis::device::feature::set_string(p_device_, "BalanceRatioSelector", "Red");
+      ROS_INFO("Set BalanceRatio = %f", config.BalanceRatioRed);
+      aravis::device::feature::set_float(p_device_, "BalanceRatio", config.BalanceRatioRed);
+
+      ROS_INFO("Set BalanceRatioSelector = Blue");
+      aravis::device::feature::set_string(p_device_, "BalanceRatioSelector", "Blue");
+      ROS_INFO("Set BalanceRatio = %f", config.BalanceRatioBlue);
+      aravis::device::feature::set_float(p_device_, "BalanceRatio", config.BalanceRatioBlue);
+
+      ROS_INFO("Set BalanceRatioSelector = Green");
+      aravis::device::feature::set_string(p_device_, "BalanceRatioSelector", "Green");
+      ROS_INFO("Set BalanceRatio = %f", config.BalanceRatioGreen);
+      aravis::device::feature::set_float(p_device_, "BalanceRatio", config.BalanceRatioGreen);
+    }
+    else
+      ROS_INFO("Camera does not support BalanceRatioSelector or BalanceRatio.");
   }
 
   if (changed_exposure_auto)
@@ -1583,6 +1617,29 @@ void CameraAravisNodelet::rosReconfigureCallback(Config &config, uint32_t level)
     }
     else
       ROS_INFO("Camera does not support GainAuto.");
+  }
+  if (changed_balance_ratio_auto)
+  {
+    if (implemented_features_["BalanceWhiteAuto"])
+    {
+      ROS_INFO("Set BalanceWhiteAuto = %s", config.BalanceWhiteAuto.c_str());
+      aravis::device::feature::set_string(p_device_, "BalanceWhiteAuto", config.BalanceWhiteAuto.c_str());
+      if (implemented_features_["BalanceRatioSelector"] && implemented_features_["BalanceRatio"])
+      {
+        ros::Duration(2.0).sleep();
+        if (config.BalanceWhiteAuto.compare("Once") == 0) {
+          config.BalanceWhiteAuto = "Off";
+        }
+        aravis::device::feature::set_string(p_device_, "BalanceRatioSelector", "Red");
+        config.BalanceRatioRed = aravis::device::feature::get_float(p_device_, "BalanceRatio");
+        aravis::device::feature::set_string(p_device_, "BalanceRatioSelector", "Blue");
+        config.BalanceRatioBlue = aravis::device::feature::get_float(p_device_, "BalanceRatio");
+        aravis::device::feature::set_string(p_device_, "BalanceRatioSelector", "Green");
+        config.BalanceRatioGreen = aravis::device::feature::get_float(p_device_, "BalanceRatio");
+      }
+    }
+    else
+      ROS_INFO("Camera does not support BalanceWhiteAuto.");
   }
 
   if (changed_acquisition_frame_rate)
@@ -1730,7 +1787,7 @@ void CameraAravisNodelet::newBufferReady(ArvStream *p_stream, size_t stream_id)
 
   // check if we risk to drop the next image because of not enough buffers left
   gint n_available_buffers;
-  arv_stream_get_n_buffers(p_stream, &n_available_buffers, NULL);
+  arv_stream_get_n_owned_buffers(p_stream, &n_available_buffers, NULL, NULL);
 
   Stream & stream = streams_[stream_id];
 
